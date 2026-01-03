@@ -2,33 +2,35 @@ import joblib
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware  # <--- IMPORT THIS
+from fastapi.middleware.cors import CORSMiddleware
 
-# 1. Load the trained pipeline
+# Load the trained pipeline
 model_pipeline = joblib.load("cardio_ensemble_model.joblib")
 
 app = FastAPI()
 
-# 2. ADD THIS BLOCK TO FIX THE 405 ERROR
+# CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins (simplest for development)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (POST, GET, OPTIONS, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# 3. Define Input Schema 
+# Input Schema - must match the 12 features used in training
 class PatientData(BaseModel):
     age: int          
     gender: int       
-    ap_hi: int        
-    ap_lo: int        
-    cholesterol: int  
-    gluc: int         
-    smoke: int        
-    alco: int         
-    active: int       
+    height: int       # in cm
+    weight: float     # in kg
+    ap_hi: int        # systolic blood pressure
+    ap_lo: int        # diastolic blood pressure
+    cholesterol: int  # 1=normal, 2=above normal, 3=well above normal
+    gluc: int         # 1=normal, 2=above normal, 3=well above normal
+    smoke: int        # 0 or 1
+    alco: int         # 0 or 1
+    active: int       # 0 or 1
     bmi: float        
 
 @app.get("/")
@@ -37,9 +39,21 @@ def home():
 
 @app.post("/predict")
 def predict(data: PatientData):
-    input_df = pd.DataFrame([data.model_dump()])
-    prediction = model_pipeline.predict(input_df)
+    # Create DataFrame with columns in the EXACT order used during training
+    input_df = pd.DataFrame([[
+        data.age,
+        data.gender,
+        data.height,
+        data.weight,
+        data.ap_hi,
+        data.ap_lo,
+        data.cholesterol,
+        data.gluc,
+        data.smoke,
+        data.alco,
+        data.active,
+        data.bmi
+    ]], columns=['age', 'gender', 'height', 'weight', 'ap_hi', 'ap_lo', 'cholesterol', 'gluc', 'smoke', 'alco', 'active', 'bmi'])
     
-    # Note: Your frontend expects "risk" but here you return "cardio_disease_prediction"
-    # It's safer to match what the frontend expects:
+    prediction = model_pipeline.predict(input_df)
     return {"risk": int(prediction[0])}
